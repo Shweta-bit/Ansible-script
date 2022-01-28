@@ -1,0 +1,112 @@
+---
+- hosts: all
+  become: yes
+  become_user: root
+  tasks:
+  - name: Add an apt key by id from a keyserver
+    apt_key:
+      keyserver: keyserver.ubuntu.com
+      id: 656408E390CFB1F5
+
+  - name: Create the /etc/apt/sources.list.d/mongodb-org-4.4.list file for Ubuntu 18.04 (Bionic) root
+    shell: echo "deb [arch=amd64] http://repo.mongodb.org/apt/ubuntu bionic/mongodb-org/4.4 multiverse" | tee /etc/apt/sources.list.d/mongodb-org-4.4.list
+    
+
+  - name: apt-get update
+    shell: apt-get update
+
+  - name: Install Mongodb
+    apt:
+      name: mongodb-org
+      state: present	
+      update_cache: yes
+  - name: update hosts file
+    lineinfile:
+     path: /etc/hosts
+     insertafter: '127.0.0.1 localhost'
+     line: "mongodb-test-VM-final-01 IP1"
+  - name: update hosts file
+    lineinfile:
+     path: /etc/hosts
+     insertafter: 'mongodb-test-VM-final-01 IP1'
+     line: "mongodb-test-VM-final-02 IP2"
+  - name: update hosts file
+    lineinfile:
+     path: /etc/hosts
+     insertafter: 'mongodb-test-VM-final-02 IP2'
+     line: "mongodb-test-VM-final-03 IP3"
+  - name: Creates directory
+    file:
+      path: /etc/mongo
+      state: directory
+      owner: root
+      group: root
+      mode: 0775
+  - name: Creates key file
+    shell: sudo openssl rand -base64 756 > /etc/mongo/mongo-keyfile
+  - name: go to mongo folder and execute the command
+    command: chdir=/etc/mongo/ chmod 400 mongo-keyfile
+  - name: go to mongo folder and execute the command
+    command: chdir=/etc/mongo/ chown mongodb:mongodb /etc/mongo -R
+  - name: move to the home directory
+    shell: cd
+  - name: update mongod.conf file
+    lineinfile:
+       path: /etc/mongod.conf
+       state: present
+       insertafter: '#replication:'
+       line: "{{ item }}"
+    with_items:
+      - ' enableMajorityReadConcern: true'
+      - ' replSetName: mongo-cluster'
+      - 'replication:'
+  - name: Start MongoDB
+    shell: service mongod start
+  - name: Status MongoDB
+    shell: service mongod status
+
+                    
+- hosts: server1
+  become: yes
+  become_user: root
+  tasks:
+    - name: change bind IP server1
+      replace:
+        path: /etc/mongod.conf
+        regexp: '127.0.0.1'
+        replace: 'IP1'
+    - name: restart MongoDB
+      shell: service mongod restart
+
+- hosts: server2
+  become: yes
+  become_user: root
+  tasks:
+    - name: change bind IP server2
+      replace:
+        path: /etc/mongod.conf
+        regexp: '127.0.0.1'
+        replace: 'IP2'
+
+- hosts: server3
+  become: yes
+  become_user: root
+  tasks:
+    - name: change bind IP server3
+      replace:
+        path: /etc/mongod.conf
+        regexp: '127.0.0.1'
+        replace: 'IP3'
+
+    - name: restart MongoDB
+      shell: service mongod restart
+
+
+- hosts: server1
+  become: yes
+  become_user: root
+  tasks:
+   - name:  Adding primary node
+     shell: mongo --host IP3 --port 27017 --eval 'printjson(rs.initiate())'
+     register: output
+   - debug: msg={{ output.stdout_lines }}
